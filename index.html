@@ -439,6 +439,19 @@ window.AUDIO={"de": {"ändern": "data:audio/mpeg;base64,//NkxAAAAANIAAAAAExBTUVV
       const pool = (S.lang === 'de' && P.merk.length) ? P.merk : P.words;
       if (!S.deck.length){
         let d = shuffle(pool);
+        if (S.lang === 'de'){
+          // „erzählen“ und „erklären“ kommen dreimal pro Durchgang vor, gleichmäßig verteilt
+          const PRIO = ['erzählen', 'erklären'];
+          const base = d.filter(x => !PRIO.includes(x.say));
+          const extra = pool.filter(x => PRIO.includes(x.say));
+          d = base;
+          for (let k = 0; k < 3; k++){
+            extra.forEach(it => {
+              const lo = Math.floor(k * d.length / 3), hi = Math.floor((k + 1) * d.length / 3);
+              d.splice(lo + Math.floor(Math.random() * Math.max(1, hi - lo)), 0, it);
+            });
+          }
+        }
         if (d.length > 1 && d[d.length - 1].say === S.lastKey) d.unshift(d.pop());
         S.deck = d;
       }
@@ -790,6 +803,24 @@ window.AUDIO={"de": {"ändern": "data:audio/mpeg;base64,//NkxAAAAANIAAAAAExBTUVV
     ctx.globalAlpha = 1;
   }
 
+  function drawMeadow(scroll){
+    const sky = ctx.createLinearGradient(0, 0, 0, GROUND);
+    sky.addColorStop(0, '#cfeaff'); sky.addColorStop(1, '#fdf1fb');
+    ctx.fillStyle = sky; ctx.fillRect(0, 0, W, GROUND);
+    ctx.fillStyle = '#ffe9a8'; ctx.beginPath(); ctx.arc(700, 60, 34, 0, Math.PI * 2); ctx.fill();
+    drawClouds(scroll * .15);
+    ctx.fillStyle = '#cdeccb';
+    for (let i = -1; i < 4; i++){
+      const cx = i * 340 - (scroll * .3 % 340);
+      ctx.beginPath(); ctx.arc(cx + 170, GROUND + 40, 190, Math.PI, 0); ctx.fill();
+    }
+    ctx.fillStyle = '#b5e3a0'; ctx.fillRect(0, GROUND, W, H - GROUND);
+    for (let i = 0; i < 8; i++){
+      const sx = ((i * 130 - scroll) % 1040 + 1040) % 1040 - 60;
+      emojiAt(i % 2 ? '🌸' : '🌼', sx, GROUND + 38, 20);
+    }
+  }
+
   const GAMES = [
     /* 1: Pferd springt über Zäune und sammelt Möhren */
     {
@@ -962,6 +993,59 @@ window.AUDIO={"de": {"ändern": "data:audio/mpeg;base64,//NkxAAAAANIAAAAAExBTUVV
         });
         drawParts();
       }
+    },
+
+    /* 4: Über Pferde springen */
+    {
+      id: 'horses', emoji: '🏇', title: 'Hüpfzeit!', unit: 'Pferde',
+      text: 'Tippe aufs Spielfeld, dann springst du über die Pferde auf der Weide! Sammle dabei Sterne ⭐',
+      init(){ G.obs = []; G.stars = []; G.h = 0; G.vh = 0; G.spawn = 1.0; G.scroll = 0; G.extra = 0; },
+      hud(){ return 'Pferde: ' + G.score + '   ⭐ ' + G.extra; },
+      press(){ if (G.h === 0) G.vh = JUMP_V; },
+      key(k){ if (k === ' ' || k === 'ArrowUp'){ this.press(); return true; } },
+      update(dt){
+        const SP = 210;
+        G.scroll += SP * dt;
+        G.spawn -= dt;
+        if (G.spawn <= 0){
+          const n = Math.random() < .3 ? 2 : 1;     // manchmal zwei Pferde nebeneinander
+          const ch = ['🐴','🐎','🦄'][Math.floor(Math.random() * 3)];
+          const w = n * 54;
+          G.obs.push({ x: W + 20, w, h: 54, n, ch, hit: false, done: false });
+          G.stars.push({ x: W + 20 + w / 2, y: GROUND - 54 - 66, got: false });
+          G.spawn = rnd(1.8, 2.8) + (n - 1) * .5;
+        }
+        G.vh -= GRAV * dt;
+        G.h += G.vh * dt;
+        if (G.h < 0){ G.h = 0; G.vh = 0; }
+        G.obs.forEach(o => {
+          o.x -= SP * dt;
+          const overlap = o.x + 6 < HX + HW - 20 && o.x + o.w - 6 > HX + 10;
+          if (!o.hit && !o.done && overlap && G.h < o.h - 8) o.hit = true;
+          if (!o.done && o.x + o.w < HX + 10){ o.done = true; if (!o.hit) G.score++; }
+        });
+        G.stars.forEach(s => {
+          s.x -= SP * dt;
+          const dx = s.x - (HX + HW / 2), dy = s.y - (GROUND - G.h - 34);
+          if (!s.got && dx * dx + dy * dy < 55 * 55){ s.got = true; G.extra++; sparkle(s.x, s.y, ['#ffd166','#ff8fb8','#c77dd9']); }
+        });
+        G.obs = G.obs.filter(o => o.x > -140);
+        G.stars = G.stars.filter(s => s.x > -40 && !s.got);
+        updateParts(dt);
+      },
+      draw(){
+        drawMeadow(G.scroll);
+        G.obs.forEach(o => {
+          ctx.globalAlpha = o.hit ? .6 : 1;
+          for (let i = 0; i < o.n; i++) emojiAt(o.ch, o.x + 27 + i * 54, GROUND - 28, 66);
+          ctx.globalAlpha = 1;
+        });
+        G.stars.forEach(s => emojiAt('⭐', s.x, s.y + Math.sin(G.scroll / 22 + s.x) * 4, 34));
+        // Kind läuft und springt
+        const bob = G.h === 0 ? Math.abs(Math.sin(G.scroll / 12)) * 5 : 0;
+        emojiAt('👧', HX + HW / 2, GROUND - G.h - bob - 34, 66, G.h > 0 ? .12 : 0);
+        drawParts();
+      }
     }
   ];
 
@@ -984,7 +1068,7 @@ window.AUDIO={"de": {"ändern": "data:audio/mpeg;base64,//NkxAAAAANIAAAAAExBTUVV
   function startGame(){
     show('s-game');
     $('endbox').classList.add('hidden');
-    $('jump').classList.toggle('hidden', G.game.id !== 'jump');
+    $('jump').classList.toggle('hidden', !['jump', 'horses'].includes(G.game.id));
     G.run = true;
     G.id++;
     G.left = GAME_SECONDS;
@@ -1056,11 +1140,17 @@ window.AUDIO={"de": {"ändern": "data:audio/mpeg;base64,//NkxAAAAANIAAAAAExBTUVV
     show('s-start');
   });
 
-  $('replay').addEventListener('click', speakTask);
+  function focusInput(){
+    const i = $('inp0');
+    if (i && !i.readOnly && !speakMode()) i.focus();
+  }
+  // Nach dem Anhören steht der Cursor sofort wieder im Feld: man kann gleich losschreiben
+  $('replay').addEventListener('click', () => { speakTask(); focusInput(); });
+  ['replay', 'hearEn', 'reveal'].forEach(id => $(id).addEventListener('mousedown', e => e.preventDefault()));
   $('check').addEventListener('click', check);
   $('next').addEventListener('click', afterFeedback);
   $('reveal').addEventListener('click', showSolution);
-  $('hearEn').addEventListener('click', playEnglish);
+  $('hearEn').addEventListener('click', () => { playEnglish(); focusInput(); });
   $('inputs').addEventListener('input', updateMeter);
   try { S.meter = localStorage.getItem('meter') !== '0'; } catch (e) {}
   $('optMeter').checked = S.meter;
