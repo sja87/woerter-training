@@ -114,7 +114,7 @@ input.ans.bad{border-color:#f0a860}
         <button class="link small" id="resetYes" type="button">Ja</button>
         <button class="link small" id="resetNo" type="button">Nein</button></span>
     </div>
-    <p class="note">Für Eltern: Die Wörter werden vorgelesen, das Kind schreibt sie. Groß- und Kleinschreibung wird geprüft. „ie oder i?“ übt mit Nomen, Adjektiven und Verben, ob ein ie oder i fehlt (mit Tipps zum Verlängern und Silbentrennen). „Diktat üben“: kurze Sätze mit den Merkwörtern. „Englisch entdecken“ übt dieselben Wörter anders: Farben und Bilder zuordnen, Zahlen und Hörverstehen. Nach 7 richtigen Antworten gibt es 2 Minuten Spiel, jederzeit abbrechbar.</p>
+    <p class="note">Für Eltern: Die Wörter werden vorgelesen, das Kind schreibt sie. Groß- und Kleinschreibung wird geprüft. „ie oder i?“ übt mit Nomen, Adjektiven und Verben, ob ein ie oder i fehlt (mit Tipps zum Verlängern und Silbentrennen). „Diktat üben“: kurze Sätze mit den Merkwörtern. „Englisch entdecken“ übt dieselben Wörter anders: Farben und Bilder zuordnen, Zahlen und Hörverstehen. Nach 7 richtigen Antworten (beim Diktat nach 3) gibt es 2 Minuten Spiel, jederzeit abbrechbar.</p>
   </section>
 
   <!-- Aufgaben -->
@@ -146,7 +146,7 @@ input.ans.bad{border-color:#f0a860}
     <div class="card endbox">
       <p class="emoji" id="introEmoji">🐴</p>
       <h2 id="introTitle">Spielzeit!</h2>
-      <p class="prompt">Du hast 7 Aufgaben geschafft. Jetzt kommen 2 Minuten Spiel.</p>
+      <p class="prompt" id="introMsg">Du hast 7 Aufgaben geschafft. Jetzt kommen 2 Minuten Spiel.</p>
       <p class="topic" id="introText"></p>
       <p class="record" id="introRecord"></p>
       <button class="big" id="startgame">Los geht's!</button>
@@ -175,7 +175,8 @@ window.AUDIO={"de": {"ändern": "data:audio/mpeg;base64,//NkxAAAAANIAAAAAExBTUVV
 <script>
 (function(){
   const $ = id => document.getElementById(id);
-  const GOAL = 7;          // richtige Antworten bis zur Pferdezeit
+  const GOAL_DEFAULT = 7;  // richtige Antworten bis zum Spiel
+  const goal = () => S.lang === 'dik' ? 3 : GOAL_DEFAULT;   // Diktat: nur 3 Aufgaben
   const GAME_SECONDS = 120;
   const PAUSE_MS = 1800;   // Pause zwischen den zwei Wiederholungen
 
@@ -560,9 +561,9 @@ window.AUDIO={"de": {"ändern": "data:audio/mpeg;base64,//NkxAAAAANIAAAAAExBTUVV
 
   /* ---------- Anzeige ---------- */
   function renderDots(){
-    const n = Math.min(S.count, GOAL);
+    const G_ = goal(), n = Math.min(S.count, G_);
     let html = '';
-    for (let i = 0; i < GOAL; i++) html += '<span class="dot' + (i < n ? ' on' : '') + '">⭐</span>';
+    for (let i = 0; i < G_; i++) html += '<span class="dot' + (i < n ? ' on' : '') + '">⭐</span>';
     $('dots').innerHTML = html;
   }
 
@@ -845,7 +846,7 @@ window.AUDIO={"de": {"ändern": "data:audio/mpeg;base64,//NkxAAAAANIAAAAAExBTUVV
 
   function afterFeedback(){
     clearTimeout(S.timer);
-    if (S.count >= GOAL) startIntro();
+    if (S.count >= goal()) startIntro();
     else nextTask();
   }
 
@@ -1280,6 +1281,7 @@ window.AUDIO={"de": {"ändern": "data:audio/mpeg;base64,//NkxAAAAANIAAAAAExBTUVV
     G.lastGame = G.game.id;
     $('introEmoji').textContent = G.game.emoji;
     $('introTitle').textContent = G.game.title;
+    $('introMsg').textContent = 'Du hast ' + goal() + ' Aufgaben geschafft. Jetzt kommen 2 Minuten Spiel.';
     $('introText').textContent = G.game.text;
     const rec = getRec(G.game.id);
     $('introRecord').textContent = rec ? '🏆 Dein Rekord: ' + rec + ' ' + G.game.unit : 'Noch kein Rekord. Du kannst ihn aufstellen!';
