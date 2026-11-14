@@ -72,6 +72,11 @@ input.ans.bad{border-color:#f0a860}
 .gapbox.filled{color:#2f9e5f;border-color:#4caf6e}
 .choices.bigc .choice{font-size:2rem;padding:22px 10px}
 .tipbox{margin:10px auto 0;max-width:420px;background:#f5e6fb;border-radius:18px;padding:12px 16px;text-align:center;line-height:1.5}
+.statsbox{margin-top:28px;text-align:center;color:var(--muted)}
+.stats{font-size:1rem}
+.link.small{font-size:.9rem;padding:4px 8px}
+.record{text-align:center;color:#b0791f;font-size:1.1rem;margin:6px 0 14px}
+.hud #best{color:#b0791f}
 .msg{text-align:center;font-size:1.3rem;margin-top:16px;min-height:1.6em}
 .answers{text-align:center;font-size:1.5rem;margin-top:6px;line-height:1.7}
 #cv{width:100%;border-radius:24px;background:#dff1ff;touch-action:none;display:block;box-shadow:var(--shadow)}
@@ -102,7 +107,13 @@ input.ans.bad{border-color:#f0a860}
       <small id="modeNote"></small>
     </div>
     <label class="opt"><input type="checkbox" id="optMeter" checked> Balken beim Schreiben anzeigen<br><small>(zeigt von Orange bis Grün, wie richtig das Wort schon ist)</small></label>
-    <p class="stats" id="stats"></p>
+    <div class="statsbox">
+      <div class="stats" id="stats"></div>
+      <button class="link small" id="resetStats" type="button">Zurücksetzen</button>
+      <span id="resetAsk" class="hidden">Wirklich auf 0 setzen?
+        <button class="link small" id="resetYes" type="button">Ja</button>
+        <button class="link small" id="resetNo" type="button">Nein</button></span>
+    </div>
     <p class="note">Für Eltern: Die Wörter werden vorgelesen, das Kind schreibt sie. Groß- und Kleinschreibung wird geprüft. „ie oder i?“ übt mit Nomen, Adjektiven und Verben, ob ein ie oder i fehlt (mit Tipps zum Verlängern und Silbentrennen). „Diktat üben“: kurze Sätze mit den Merkwörtern. „Englisch entdecken“ übt dieselben Wörter anders: Farben und Bilder zuordnen, Zahlen und Hörverstehen. Nach 7 richtigen Antworten gibt es 2 Minuten Spiel, jederzeit abbrechbar.</p>
   </section>
 
@@ -137,21 +148,22 @@ input.ans.bad{border-color:#f0a860}
       <h2 id="introTitle">Spielzeit!</h2>
       <p class="prompt">Du hast 7 Aufgaben geschafft. Jetzt kommen 2 Minuten Spiel.</p>
       <p class="topic" id="introText"></p>
+      <p class="record" id="introRecord"></p>
       <button class="big" id="startgame">Los geht's!</button>
-      <button class="reveal" id="skipgame">Lieber weiter üben</button>
+      <button class="reveal" id="skipgame">Lieber weiter lernen</button>
     </div>
   </section>
 
   <!-- Pferdespiel -->
   <section id="s-game" class="screen">
-    <div class="hud"><span id="time"></span><span id="score"></span></div>
+    <div class="hud"><span id="time"></span><span id="best"></span><span id="score"></span></div>
     <canvas id="cv" width="800" height="360"></canvas>
     <button class="jump" id="jump">⬆ Springen</button>
-    <button class="quitbig" id="quitgame">← Zurück zum Üben</button>
+    <button class="quitbig" id="quitgame">← Zurück zum Lernen</button>
     <div id="endbox" class="card endbox hidden">
       <p class="emoji">🎉</p>
       <p class="prompt" id="endtext"></p>
-      <button class="big" id="backwrite">Zurück zum Üben</button>
+      <button class="big" id="backwrite">Zurück zum Lernen</button>
     </div>
   </section>
 
@@ -239,7 +251,7 @@ window.AUDIO={"de": {"ändern": "data:audio/mpeg;base64,//NkxAAAAANIAAAAAExBTUVV
   function updateStats(){
     const d = loadPractice();
     const total = Object.values(d).reduce((a, b) => a + b, 0);
-    $('stats').textContent = total ? '📊 Geübt: heute ' + fmtMin(d[todayKey()] || 0) + ' · insgesamt ' + fmtMin(total) : '';
+    $('stats').textContent = '⏱ Heute geübt: ' + fmtMin(d[todayKey()] || 0) + ' · Insgesamt: ' + fmtMin(total);
   }
   ['keydown', 'pointerdown', 'input'].forEach(ev => document.addEventListener(ev, () => { lastAct = Date.now(); }, true));
   setInterval(() => {
@@ -292,6 +304,41 @@ window.AUDIO={"de": {"ändern": "data:audio/mpeg;base64,//NkxAAAAANIAAAAAExBTUVV
     }
     return b;
   }
+  /* ---------- Mischstapel: jedes Wort kommt dran, bevor sich eines wiederholt (auch über Neustarts hinweg) ---------- */
+  const DECK_KEY = 'decks.v1';
+  function loadDecks(){ try { return JSON.parse(localStorage.getItem(DECK_KEY) || '{}'); } catch (e) { return {}; } }
+  function saveDecks(d){ try { localStorage.setItem(DECK_KEY, JSON.stringify(d)); } catch (e) {} }
+  function drawFrom(mode, ids, build){
+    const all = new Set(ids);
+    const decks = loadDecks();
+    let d = (decks[mode] || []).filter(id => all.has(id));
+    if (!d.length){
+      d = shuffle([...all]);
+      if (build) d = build(d);
+      const last = decks['last:' + mode];
+      if (d.length > 1 && d[d.length - 1] === last) d.unshift(d.pop());
+    }
+    const id = d.pop();
+    decks[mode] = d;
+    decks['last:' + mode] = id;
+    saveDecks(decks);
+    return id;
+  }
+  function putBack(mode, id){            // zurück an den Stapelanfang (kommt zuletzt)
+    const decks = loadDecks();
+    (decks[mode] = decks[mode] || []).unshift(id);
+    saveDecks(decks);
+  }
+  function requeueFailed(){              // nicht geschaffte Wörter kommen nach etwa 12 Aufgaben nochmal
+    const t = S.task;
+    if (!t || !t.deckMode || t.requeued) return;
+    t.requeued = true;
+    const decks = loadDecks();
+    const d = decks[t.deckMode] = decks[t.deckMode] || [];
+    d.splice(Math.max(0, d.length - 12), 0, t.deckId);
+    saveDecks(decks);
+  }
+
   // Stimmen mit schlechter Qualität oder als Spaß-Stimme aussortieren
   const BAD_VOICE = /eddy|flo|grandma|grandpa|bahh|boing|cellos|glocken|flüstern|junior|albert|fred|gute neuigkeiten|bells|whisper|zarvox|trinoids|organ|superstar|good news|bad news|wobble|hysterical|pipe/i;
   const PREFERRED = /anna|petra|markus|katja|helena|yannick|google|natural|premium|enhanced|daniel|samantha|serena|martin/i;
@@ -340,7 +387,7 @@ window.AUDIO={"de": {"ändern": "data:audio/mpeg;base64,//NkxAAAAANIAAAAAExBTUVV
       if (i >= seq.length) return;
       const a = new Audio(map[seq[i++]]);
       currentAudio = a;
-      a.onended = () => { speakTimer = setTimeout(step, PAUSE_MS); };
+      a.onended = () => { focusInput(); speakTimer = setTimeout(step, PAUSE_MS); };
       a.onerror = () => { speakTimer = setTimeout(step, 300); };
       const p = a.play();
       if (p && p.catch) p.catch(() => { speakFallback(texts); });
@@ -396,20 +443,20 @@ window.AUDIO={"de": {"ändern": "data:audio/mpeg;base64,//NkxAAAAANIAAAAAExBTUVV
       visual: '<span class="pic">🔊</span>', correct: pr[0], from: grp(i), say: [pr[1]] }) }))
   ];
   function makeChoice(){
-    if (!S.deck.length){
-      const d = shuffle(CHOICE_POOL);
-      if (d.length > 1 && d[d.length - 1].id === S.lastKey) d.unshift(d.pop());
-      S.deck = d;
-    }
-    // dasselbe englische Wort nicht in Aufgaben kurz hintereinander (auch nicht in anderer Form)
     S.recent = S.recent || [];
-    let idx = S.deck.length - 1;
-    while (idx > 0 && S.recent.includes(S.deck[idx].id.slice(2))) idx--;
-    const it = S.deck.splice(idx, 1)[0];
-    S.lastKey = it.id;
-    S.recent.push(it.id.slice(2));
+    let id, it, tries = 0;
+    do {
+      id = drawFrom('en2', CHOICE_POOL.map(x => x.id));
+      it = CHOICE_POOL.find(x => x.id === id);
+      // dasselbe englische Wort nicht in Aufgaben kurz hintereinander (auch nicht in anderer Form)
+      if (!S.recent.includes(id.slice(2)) || tries++ > 6) break;
+      putBack('en2', id);
+    } while (true);
+    S.recent.push(id.slice(2));
     if (S.recent.length > 8) S.recent.shift();
-    return it.make();
+    const t = it.make();
+    t.deckMode = 'en2'; t.deckId = id;
+    return t;
   }
 
   function fillGap(t){
@@ -451,34 +498,24 @@ window.AUDIO={"de": {"ändern": "data:audio/mpeg;base64,//NkxAAAAANIAAAAAExBTUVV
   // Sätze: Groß-/Kleinschreibung und Wörter zählen, Satzzeichen und Leerraum nicht
   const nfSentence = s => s.trim().replace(/[.,!?;:]/g, '').split(/\s+/).map(norm).join(' ');
   function makeDictation(){
-    if (!S.deck.length){
-      const d = shuffle(DIK_SENT);
-      if (d.length > 1 && d[d.length - 1] === S.lastKey) d.unshift(d.pop());
-      S.deck = d;
-    }
-    const s = S.deck.pop();
-    S.lastKey = s;
+    const s = drawFrom('dik', DIK_SENT);
     return { kind: 'word', dik: true, prompt: 'Schreibe den Satz, den du hörst.', topic: 'Diktat', say: [s],
+             deckMode: 'dik', deckId: s,
              items: [{ say: s, show: s, ans: [s], nf: nfSentence, ok: false }] };
   }
 
   /* ---------- ie oder i? (Nomen, Adjektive, Verben) ---------- */
   const IE_WORDS = [{"pos": "Nomen", "pre": "", "before": "Sp", "after": "gel", "ie": 1, "word": "Spiegel", "say": "Spiegel", "tip": "Trenne das Wort in Silben: Sp_-gel. Sprich langsam. Ist der Vokal lang oder kurz?", "ex": "Spie-gel: langes i, also ie", "fsay": ""}, {"pos": "Nomen", "pre": "", "before": "T", "after": "r", "ie": 1, "word": "Tier", "say": "Tier", "tip": "Verlängere das Wort (Mehrzahl): T_r → T_re. Sprich es laut. Ist das i lang oder kurz?", "ex": "Tier → Tiere: langes i, also ie", "fsay": "Tiere"}, {"pos": "Nomen", "pre": "", "before": "W", "after": "se", "ie": 1, "word": "Wiese", "say": "Wiese", "tip": "Trenne das Wort in Silben: W_-se. Sprich langsam. Ist der Vokal lang oder kurz?", "ex": "Wie-se: langes i, also ie", "fsay": ""}, {"pos": "Nomen", "pre": "", "before": "B", "after": "ne", "ie": 1, "word": "Biene", "say": "Biene", "tip": "Trenne das Wort in Silben: B_-ne. Sprich langsam. Ist der Vokal lang oder kurz?", "ex": "Bie-ne: langes i, also ie", "fsay": ""}, {"pos": "Nomen", "pre": "", "before": "Br", "after": "f", "ie": 1, "word": "Brief", "say": "Brief", "tip": "Verlängere das Wort (Mehrzahl): Br_f → Br_fe. Sprich es laut. Ist das i lang oder kurz?", "ex": "Brief → Briefe: langes i, also ie", "fsay": "Briefe"}, {"pos": "Nomen", "pre": "", "before": "Sp", "after": "l", "ie": 1, "word": "Spiel", "say": "Spiel", "tip": "Verlängere das Wort (Mehrzahl): Sp_l → Sp_le. Sprich es laut. Ist das i lang oder kurz?", "ex": "Spiel → Spiele: langes i, also ie", "fsay": "Spiele"}, {"pos": "Nomen", "pre": "", "before": "Fl", "after": "ge", "ie": 1, "word": "Fliege", "say": "Fliege", "tip": "Trenne das Wort in Silben: Fl_-ge. Sprich langsam. Ist der Vokal lang oder kurz?", "ex": "Flie-ge: langes i, also ie", "fsay": ""}, {"pos": "Nomen", "pre": "", "before": "L", "after": "be", "ie": 1, "word": "Liebe", "say": "Liebe", "tip": "Trenne das Wort in Silben: L_-be. Sprich langsam. Ist der Vokal lang oder kurz?", "ex": "Lie-be: langes i, also ie", "fsay": ""}, {"pos": "Nomen", "pre": "", "before": "Z", "after": "l", "ie": 1, "word": "Ziel", "say": "Ziel", "tip": "Verlängere das Wort (Mehrzahl): Z_l → Z_le. Sprich es laut. Ist das i lang oder kurz?", "ex": "Ziel → Ziele: langes i, also ie", "fsay": "Ziele"}, {"pos": "Nomen", "pre": "", "before": "W", "after": "nter", "ie": 0, "word": "Winter", "say": "Winter", "tip": "Trenne das Wort in Silben: W_n-ter. Sprich langsam. Ist der Vokal lang oder kurz?", "ex": "Win-ter: kurzes i, also i", "fsay": ""}, {"pos": "Nomen", "pre": "", "before": "K", "after": "nd", "ie": 0, "word": "Kind", "say": "Kind", "tip": "Verlängere das Wort (Mehrzahl): K_nd → K_nder. Sprich es laut. Ist das i lang oder kurz?", "ex": "Kind → Kinder: kurzes i, also i", "fsay": "Kinder"}, {"pos": "Nomen", "pre": "", "before": "B", "after": "rne", "ie": 0, "word": "Birne", "say": "Birne", "tip": "Trenne das Wort in Silben: B_r-ne. Sprich langsam. Ist der Vokal lang oder kurz?", "ex": "Bir-ne: kurzes i, also i", "fsay": ""}, {"pos": "Nomen", "pre": "", "before": "Sch", "after": "ff", "ie": 0, "word": "Schiff", "say": "Schiff", "tip": "Verlängere das Wort (Mehrzahl): Sch_ff → Sch_ffe. Sprich es laut. Ist das i lang oder kurz?", "ex": "Schiff → Schiffe: kurzes i, also i", "fsay": "Schiffe"}, {"pos": "Nomen", "pre": "", "before": "M", "after": "tte", "ie": 0, "word": "Mitte", "say": "Mitte", "tip": "Trenne das Wort in Silben: M_t-te. Sprich langsam. Ist der Vokal lang oder kurz?", "ex": "Mit-te: kurzes i, also i", "fsay": ""}, {"pos": "Nomen", "pre": "", "before": "B", "after": "ld", "ie": 0, "word": "Bild", "say": "Bild", "tip": "Verlängere das Wort (Mehrzahl): B_ld → B_lder. Sprich es laut. Ist das i lang oder kurz?", "ex": "Bild → Bilder: kurzes i, also i", "fsay": "Bilder"}, {"pos": "Nomen", "pre": "", "before": "T", "after": "sch", "ie": 0, "word": "Tisch", "say": "Tisch", "tip": "Verlängere das Wort (Mehrzahl): T_sch → T_sche. Sprich es laut. Ist das i lang oder kurz?", "ex": "Tisch → Tische: kurzes i, also i", "fsay": "Tische"}, {"pos": "Adjektiv", "pre": "", "before": "t", "after": "f", "ie": 1, "word": "tief", "say": "tief", "tip": "Steigere das Wort: t_f → t_fer. Sprich es laut. Ist das i lang oder kurz?", "ex": "tief → tiefer: langes i, also ie", "fsay": "tiefer"}, {"pos": "Adjektiv", "pre": "", "before": "sch", "after": "f", "ie": 1, "word": "schief", "say": "schief", "tip": "Steigere das Wort: sch_f → sch_fer. Sprich es laut. Ist das i lang oder kurz?", "ex": "schief → schiefer: langes i, also ie", "fsay": "schiefer"}, {"pos": "Adjektiv", "pre": "", "before": "l", "after": "b", "ie": 1, "word": "lieb", "say": "lieb", "tip": "Steigere das Wort: l_b → l_ber. Sprich es laut. Ist das i lang oder kurz?", "ex": "lieb → lieber: langes i, also ie", "fsay": "lieber"}, {"pos": "Adjektiv", "pre": "", "before": "v", "after": "l", "ie": 1, "word": "viel", "say": "viel", "tip": "Steigere das Wort: v_l → v_le. Sprich es laut. Ist das i lang oder kurz?", "ex": "viel → viele: langes i, also ie", "fsay": "viele"}, {"pos": "Adjektiv", "pre": "", "before": "r", "after": "sig", "ie": 1, "word": "riesig", "say": "riesig", "tip": "Trenne das Wort in Silben: r_-sig. Sprich langsam. Ist der Vokal lang oder kurz?", "ex": "rie-sig: langes i, also ie", "fsay": ""}, {"pos": "Adjektiv", "pre": "", "before": "z", "after": "rlich", "ie": 1, "word": "zierlich", "say": "zierlich", "tip": "Trenne das Wort in Silben: z_r-lich. Sprich langsam. Ist der Vokal lang oder kurz?", "ex": "zier-lich: langes i, also ie", "fsay": ""}, {"pos": "Adjektiv", "pre": "", "before": "d", "after": "ck", "ie": 0, "word": "dick", "say": "dick", "tip": "Steigere das Wort: d_ck → d_cker. Sprich es laut. Ist das i lang oder kurz?", "ex": "dick → dicker: kurzes i, also i", "fsay": "dicker"}, {"pos": "Adjektiv", "pre": "", "before": "st", "after": "ll", "ie": 0, "word": "still", "say": "still", "tip": "Steigere das Wort: st_ll → st_ller. Sprich es laut. Ist das i lang oder kurz?", "ex": "still → stiller: kurzes i, also i", "fsay": "stiller"}, {"pos": "Adjektiv", "pre": "", "before": "w", "after": "ld", "ie": 0, "word": "wild", "say": "wild", "tip": "Steigere das Wort: w_ld → w_lder. Sprich es laut. Ist das i lang oder kurz?", "ex": "wild → wilder: kurzes i, also i", "fsay": "wilder"}, {"pos": "Adjektiv", "pre": "", "before": "fl", "after": "nk", "ie": 0, "word": "flink", "say": "flink", "tip": "Steigere das Wort: fl_nk → fl_nker. Sprich es laut. Ist das i lang oder kurz?", "ex": "flink → flinker: kurzes i, also i", "fsay": "flinker"}, {"pos": "Adjektiv", "pre": "", "before": "b", "after": "tter", "ie": 0, "word": "bitter", "say": "bitter", "tip": "Trenne das Wort in Silben: b_t-ter. Sprich langsam. Ist der Vokal lang oder kurz?", "ex": "bit-ter: kurzes i, also i", "fsay": ""}, {"pos": "Adjektiv", "pre": "", "before": "w", "after": "ndig", "ie": 0, "word": "windig", "say": "windig", "tip": "Trenne das Wort in Silben: w_n-dig. Sprich langsam. Ist der Vokal lang oder kurz?", "ex": "win-dig: kurzes i, also i", "fsay": ""}, {"pos": "Adjektiv", "pre": "", "before": "m", "after": "ld", "ie": 0, "word": "mild", "say": "mild", "tip": "Steigere das Wort: m_ld → m_lder. Sprich es laut. Ist das i lang oder kurz?", "ex": "mild → milder: kurzes i, also i", "fsay": "milder"}, {"pos": "Adjektiv", "pre": "", "before": "fr", "after": "sch", "ie": 0, "word": "frisch", "say": "frisch", "tip": "Steigere das Wort: fr_sch → fr_scher. Sprich es laut. Ist das i lang oder kurz?", "ex": "frisch → frischer: kurzes i, also i", "fsay": "frischer"}, {"pos": "Adjektiv", "pre": "", "before": "l", "after": "stig", "ie": 0, "word": "listig", "say": "listig", "tip": "Trenne das Wort in Silben: l_s-tig. Sprich langsam. Ist der Vokal lang oder kurz?", "ex": "lis-tig: kurzes i, also i", "fsay": ""}, {"pos": "Verb", "pre": "", "before": "sp", "after": "len", "ie": 1, "word": "spielen", "say": "spielen", "tip": "Trenne das Wort in Silben: sp_-len. Sprich langsam. Ist der Vokal lang oder kurz?", "ex": "spie-len: langes i, also ie", "fsay": ""}, {"pos": "Verb", "pre": "", "before": "l", "after": "ben", "ie": 1, "word": "lieben", "say": "lieben", "tip": "Trenne das Wort in Silben: l_-ben. Sprich langsam. Ist der Vokal lang oder kurz?", "ex": "lie-ben: langes i, also ie", "fsay": ""}, {"pos": "Verb", "pre": "", "before": "fl", "after": "gen", "ie": 1, "word": "fliegen", "say": "fliegen", "tip": "Trenne das Wort in Silben: fl_-gen. Sprich langsam. Ist der Vokal lang oder kurz?", "ex": "flie-gen: langes i, also ie", "fsay": ""}, {"pos": "Verb", "pre": "", "before": "sch", "after": "ben", "ie": 1, "word": "schieben", "say": "schieben", "tip": "Trenne das Wort in Silben: sch_-ben. Sprich langsam. Ist der Vokal lang oder kurz?", "ex": "schie-ben: langes i, also ie", "fsay": ""}, {"pos": "Verb", "pre": "", "before": "r", "after": "chen", "ie": 1, "word": "riechen", "say": "riechen", "tip": "Trenne das Wort in Silben: r_-chen. Sprich langsam. Ist der Vokal lang oder kurz?", "ex": "rie-chen: langes i, also ie", "fsay": ""}, {"pos": "Verb", "pre": "", "before": "l", "after": "gen", "ie": 1, "word": "liegen", "say": "liegen", "tip": "Trenne das Wort in Silben: l_-gen. Sprich langsam. Ist der Vokal lang oder kurz?", "ex": "lie-gen: langes i, also ie", "fsay": ""}, {"pos": "Verb", "pre": "sie ", "before": "fl", "after": "gt", "ie": 1, "word": "sie fliegt", "say": "sie fliegt", "tip": "Bilde die Grundform: sie fl_gt → fl_gen. Sprich es laut. Ist das i lang oder kurz?", "ex": "sie fliegt → fliegen: langes i, also ie", "fsay": "fliegen"}, {"pos": "Verb", "pre": "er ", "before": "sp", "after": "lt", "ie": 1, "word": "er spielt", "say": "er spielt", "tip": "Bilde die Grundform: er sp_lt → sp_len. Sprich es laut. Ist das i lang oder kurz?", "ex": "er spielt → spielen: langes i, also ie", "fsay": "spielen"}, {"pos": "Verb", "pre": "", "before": "s", "after": "ngen", "ie": 0, "word": "singen", "say": "singen", "tip": "Trenne das Wort in Silben: s_n-gen. Sprich langsam. Ist der Vokal lang oder kurz?", "ex": "sin-gen: kurzes i, also i", "fsay": ""}, {"pos": "Verb", "pre": "", "before": "b", "after": "tten", "ie": 0, "word": "bitten", "say": "bitten", "tip": "Trenne das Wort in Silben: b_t-ten. Sprich langsam. Ist der Vokal lang oder kurz?", "ex": "bit-ten: kurzes i, also i", "fsay": ""}, {"pos": "Verb", "pre": "", "before": "s", "after": "tzen", "ie": 0, "word": "sitzen", "say": "sitzen", "tip": "Trenne das Wort in Silben: s_t-zen. Sprich langsam. Ist der Vokal lang oder kurz?", "ex": "sit-zen: kurzes i, also i", "fsay": ""}, {"pos": "Verb", "pre": "", "before": "f", "after": "nden", "ie": 0, "word": "finden", "say": "finden", "tip": "Trenne das Wort in Silben: f_n-den. Sprich langsam. Ist der Vokal lang oder kurz?", "ex": "fin-den: kurzes i, also i", "fsay": ""}, {"pos": "Verb", "pre": "", "before": "schw", "after": "mmen", "ie": 0, "word": "schwimmen", "say": "schwimmen", "tip": "Trenne das Wort in Silben: schw_m-men. Sprich langsam. Ist der Vokal lang oder kurz?", "ex": "schwim-men: kurzes i, also i", "fsay": ""}, {"pos": "Verb", "pre": "", "before": "tr", "after": "nken", "ie": 0, "word": "trinken", "say": "trinken", "tip": "Trenne das Wort in Silben: tr_n-ken. Sprich langsam. Ist der Vokal lang oder kurz?", "ex": "trin-ken: kurzes i, also i", "fsay": ""}, {"pos": "Verb", "pre": "sie ", "before": "s", "after": "ngt", "ie": 0, "word": "sie singt", "say": "sie singt", "tip": "Bilde die Grundform: sie s_ngt → s_ngen. Sprich es laut. Ist das i lang oder kurz?", "ex": "sie singt → singen: kurzes i, also i", "fsay": "singen"}, {"pos": "Verb", "pre": "er ", "before": "br", "after": "ngt", "ie": 0, "word": "er bringt", "say": "er bringt", "tip": "Bilde die Grundform: er br_ngt → br_ngen. Sprich es laut. Ist das i lang oder kurz?", "ex": "er bringt → bringen: kurzes i, also i", "fsay": "bringen"}, {"pos": "Verb", "pre": "sie ", "before": "f", "after": "ndet", "ie": 0, "word": "sie findet", "say": "sie findet", "tip": "Bilde die Grundform: sie f_ndet → f_nden. Sprich es laut. Ist das i lang oder kurz?", "ex": "sie findet → finden: kurzes i, also i", "fsay": "finden"}, {"pos": "Verb", "pre": "er ", "before": "schw", "after": "mmt", "ie": 0, "word": "er schwimmt", "say": "er schwimmt", "tip": "Bilde die Grundform: er schw_mmt → schw_mmen. Sprich es laut. Ist das i lang oder kurz?", "ex": "er schwimmt → schwimmen: kurzes i, also i", "fsay": "schwimmen"}];
   function makeIE(){
-    if (!S.deck.length){
-      const d = shuffle(IE_WORDS);
-      if (d.length > 1 && d[d.length - 1].word === S.lastKey) d.unshift(d.pop());
-      S.deck = d;
-    }
-    const w = S.deck.pop();
-    S.lastKey = w.word;
+    const wid = drawFrom('ie', IE_WORDS.map(x => x.word));
+    const w = IE_WORDS.find(x => x.word === wid);
     const fill = w.ie ? 'ie' : 'i';
     const opts = shuffle(['ie', 'i']);
     return { kind: 'choice', big: true, prompt: 'Setze ie oder i ein.', topic: w.pos,
       visual: '<div class="gapword">' + (w.pre ? '<small>' + w.pre + '</small>' : '') + w.before +
               '<span class="gapbox">?</span>' + w.after + '</div>',
       options: opts, correct: opts.indexOf(fill), correctText: w.word, fill, explain: w.ex, tip: w.tip, tipSay: w.fsay,
-      say: [w.say], hasAudio: true, items: [] };
+      say: [w.say], hasAudio: true, deckMode: 'ie', deckId: w.word, items: [] };
   }
 
   function makeTask(){
@@ -493,28 +530,23 @@ window.AUDIO={"de": {"ändern": "data:audio/mpeg;base64,//NkxAAAAANIAAAAAExBTUVV
       // Deutsch: ausschließlich die Merkwörter. Englisch: Wörter aus Unit 1 und 2.
       // Mischstapel: jedes Wort kommt pro Durchgang nur einmal vor
       const pool = (S.lang === 'de' && P.merk.length) ? P.merk : P.words;
-      if (!S.deck.length){
-        let d = shuffle(pool);
-        if (S.lang === 'de'){
-          // „erzählen“ und „erklären“ kommen dreimal pro Durchgang vor, gleichmäßig verteilt
-          const PRIO = ['erzählen', 'erklären'];
-          const base = d.filter(x => !PRIO.includes(x.say));
-          const extra = pool.filter(x => PRIO.includes(x.say));
-          d = base;
-          for (let k = 0; k < 3; k++){
-            extra.forEach(it => {
-              const lo = Math.floor(k * d.length / 3), hi = Math.floor((k + 1) * d.length / 3);
-              d.splice(lo + Math.floor(Math.random() * Math.max(1, hi - lo)), 0, it);
-            });
-          }
+      const byId = Object.fromEntries(pool.map(x => [x.say, x]));
+      const buildDe = d => {
+        // „erzählen“ und „erklären“ kommen dreimal pro Durchgang vor, gleichmäßig verteilt
+        const PRIO = ['erzählen', 'erklären'];
+        const out = d.filter(x => !PRIO.includes(x));
+        for (let k = 0; k < 3; k++){
+          PRIO.forEach(w => {
+            const lo = Math.floor(k * out.length / 3), hi = Math.floor((k + 1) * out.length / 3);
+            out.splice(lo + Math.floor(Math.random() * Math.max(1, hi - lo)), 0, w);
+          });
         }
-        if (d.length > 1 && d[d.length - 1].say === S.lastKey) d.unshift(d.pop());
-        S.deck = d;
-      }
-      const it = S.deck.pop();
-      const key = it.say;
-      S.lastKey = key;
+        return out;
+      };
+      const id = drawFrom(S.lang, pool.map(x => x.say), S.lang === 'de' ? buildDe : null);
+      const it = byId[id];
       return { kind, prompt: S.lang === 'en' ? 'Schreibe das Wort auf Englisch.' : 'Schreibe das Wort, das du hörst.', topic: '',
+               deckMode: S.lang, deckId: id,
                items: [{ ...it, ok: false }], say: [it.say] };
     }
 
@@ -692,7 +724,7 @@ window.AUDIO={"de": {"ändern": "data:audio/mpeg;base64,//NkxAAAAANIAAAAAExBTUVV
     $('meterfill').style.width = '0%';
     renderDots();
     const first = $('inp0');
-    if (first && !sp) setTimeout(() => first.focus(), 100);
+    if (first && !sp){ setTimeout(focusInput, 100); setTimeout(focusInput, 600); }
   }
 
   function speakTask(){
@@ -732,6 +764,7 @@ window.AUDIO={"de": {"ändern": "data:audio/mpeg;base64,//NkxAAAAANIAAAAAExBTUVV
 
   function showSolution(){
     const t = S.task;
+    requeueFailed();
     if (t.kind === 'choice'){
       S.answered = true;
       $('inputs').querySelectorAll('.choice').forEach((b, i) => {
@@ -1106,8 +1139,134 @@ window.AUDIO={"de": {"ändern": "data:audio/mpeg;base64,//NkxAAAAANIAAAAAExBTUVV
         emojiAt('👧', HX + HW / 2, GROUND - G.h - bob - 34, 66, G.h > 0 ? .12 : 0);
         drawParts();
       }
+    },
+
+    /* 5: Heu sammeln (Snake mit Pferd) */
+    {
+      id: 'snake', emoji: '🌾', title: 'Heu-Zeit!', unit: 'Heubündel',
+      text: 'Tippe dorthin, wohin dein Pferd laufen soll (oder nimm die Pfeiltasten). Sammle das Heu 🌾, dann läuft eine Fohlen-Reihe hinter dir her!',
+      init(){
+        G.snake = [{ x: 5, y: 4 }, { x: 4, y: 4 }, { x: 3, y: 4 }];
+        G.dir = { x: 1, y: 0 }; G.nd = { x: 1, y: 0 }; G.acc = 0; G.t = 0;
+        this.placeHay();
+      },
+      placeHay(){
+        for (let i = 0; i < 300; i++){
+          const c = { x: Math.floor(Math.random() * 20), y: Math.floor(Math.random() * 9) };
+          if (!G.snake.some(s => s.x === c.x && s.y === c.y)){ G.hay = c; return; }
+        }
+        G.hay = { x: 10, y: 4 };
+      },
+      hud(){ return 'Heu: ' + G.score; },
+      setDir(d){
+        if (!d.x && !d.y) return;
+        if (d.x === -G.dir.x && d.y === -G.dir.y) return;     // nicht rückwärts
+        G.nd = d;
+      },
+      press(x, y){
+        const h = G.snake[0], dx = x - (h.x * 40 + 20), dy = y - (h.y * 40 + 20);
+        this.setDir(Math.abs(dx) > Math.abs(dy) ? { x: Math.sign(dx), y: 0 } : { x: 0, y: Math.sign(dy) });
+      },
+      key(k){
+        const m = { ArrowUp: [0,-1], ArrowDown: [0,1], ArrowLeft: [-1,0], ArrowRight: [1,0], w: [0,-1], s: [0,1], a: [-1,0], d: [1,0] }[k];
+        if (!m) return false;
+        this.setDir({ x: m[0], y: m[1] });
+        return true;
+      },
+      update(dt){
+        G.t += dt; G.acc += dt;
+        while (G.acc >= 0.2){            // Pferd läuft über den Rand hinaus auf der anderen Seite weiter, nichts geht kaputt
+          G.acc -= 0.2;
+          G.dir = G.nd;
+          const h = G.snake[0];
+          const n = { x: (h.x + G.dir.x + 20) % 20, y: (h.y + G.dir.y + 9) % 9 };
+          G.snake.unshift(n);
+          if (n.x === G.hay.x && n.y === G.hay.y){
+            G.score++;
+            sparkle(n.x * 40 + 20, n.y * 40 + 20, ['#e8c35a', '#ffd166', '#6fcf97']);
+            this.placeHay();
+          } else G.snake.pop();
+        }
+        updateParts(dt);
+      },
+      draw(){
+        for (let y = 0; y < 9; y++) for (let x = 0; x < 20; x++){
+          ctx.fillStyle = (x + y) % 2 ? '#c3e8ae' : '#b9e1a3';
+          ctx.fillRect(x * 40, y * 40, 40, 40);
+        }
+        emojiAt('🌾', G.hay.x * 40 + 20, G.hay.y * 40 + 20 + Math.sin(G.t * 4) * 2, 34);
+        for (let i = G.snake.length - 1; i >= 1; i--) emojiAt('🐴', G.snake[i].x * 40 + 20, G.snake[i].y * 40 + 21, 28);
+        const h = G.snake[0];
+        ctx.save();
+        ctx.translate(h.x * 40 + 20, h.y * 40 + 21);
+        if (G.dir.x > 0) ctx.scale(-1, 1);
+        ctx.font = '44px serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+        ctx.fillText('🐎', 0, 0);
+        ctx.restore();
+        drawParts();
+      }
+    },
+
+    /* 6: Pferde-Memory */
+    {
+      id: 'memory', emoji: '🃏', title: 'Pferde-Memory!', unit: 'Paare',
+      text: 'Tippe zwei Karten an und finde die Paare mit den gleichen Bildern!',
+      newBoard(){
+        const e = shuffle(['🐴','🐎','🦄','🥕','🍎','🌾','🏇','🎀','🌸','⭐']).slice(0, 6);
+        return shuffle([...e, ...e]).map(ch => ({ ch, up: false, done: false }));
+      },
+      init(){ G.board = this.newBoard(); G.sel = []; G.lock = 0; G.win = 0; },
+      rect(i){ const c = i % 4, r = Math.floor(i / 4); return { x: 139 + c * 134, y: 22 + r * 110, w: 120, h: 96 }; },
+      hud(){ return 'Paare: ' + G.score; },
+      press(x, y){
+        if (G.lock > 0 || G.win > 0) return;
+        const i = G.board.findIndex((c, j) => { const r = this.rect(j); return x >= r.x && x <= r.x + r.w && y >= r.y && y <= r.y + r.h; });
+        if (i < 0 || G.board[i].up || G.board[i].done) return;
+        G.board[i].up = true; G.sel.push(i);
+        if (G.sel.length === 2){
+          const [a, b] = G.sel;
+          if (G.board[a].ch === G.board[b].ch){
+            G.board[a].done = G.board[b].done = true; G.score++; G.sel = [];
+            [a, b].forEach(j => { const r = this.rect(j); sparkle(r.x + r.w / 2, r.y + r.h / 2, ['#ffd166', '#ff8fb8', '#c77dd9']); });
+            if (G.board.every(c => c.done)) G.win = 1.2;
+          } else G.lock = 0.9;
+        }
+      },
+      update(dt){
+        if (G.lock > 0){ G.lock -= dt; if (G.lock <= 0){ G.sel.forEach(i => { G.board[i].up = false; }); G.sel = []; } }
+        if (G.win > 0){ G.win -= dt; if (G.win <= 0) G.board = this.newBoard(); }
+        updateParts(dt);
+      },
+      draw(){
+        const bg = ctx.createLinearGradient(0, 0, 0, H);
+        bg.addColorStop(0, '#ffe3f1'); bg.addColorStop(1, '#e6dcff');
+        ctx.fillStyle = bg; ctx.fillRect(0, 0, W, H);
+        G.board.forEach((c, i) => {
+          const r = this.rect(i);
+          ctx.beginPath();
+          const rad = 16;
+          ctx.moveTo(r.x + rad, r.y);
+          ctx.arcTo(r.x + r.w, r.y, r.x + r.w, r.y + r.h, rad); ctx.arcTo(r.x + r.w, r.y + r.h, r.x, r.y + r.h, rad);
+          ctx.arcTo(r.x, r.y + r.h, r.x, r.y, rad); ctx.arcTo(r.x, r.y, r.x + r.w, r.y, rad);
+          ctx.closePath();
+          ctx.fillStyle = c.done ? '#d9f6e4' : c.up ? '#ffffff' : '#c77dd9';
+          ctx.fill();
+          ctx.lineWidth = 3; ctx.strokeStyle = c.done ? '#7cc596' : '#eadcf3'; ctx.stroke();
+          if (c.up || c.done) emojiAt(c.ch, r.x + r.w / 2, r.y + r.h / 2 + 2, 58);
+          else emojiAt('🐴', r.x + r.w / 2, r.y + r.h / 2 + 2, 30);
+        });
+        drawParts();
+      }
     }
   ];
+
+  const getRec = id => { try { return +localStorage.getItem('rec:' + id) || 0; } catch (e) { return 0; } };
+  const setRec = (id, v) => { try { localStorage.setItem('rec:' + id, String(v)); } catch (e) {} };
+  function saveRecord(){
+    if (!G.game || G.score <= G.best) return false;
+    setRec(G.game.id, G.score);
+    return true;
+  }
 
   function pickGame(){
     const options = GAMES.filter(g => g.id !== G.lastGame);
@@ -1122,6 +1281,8 @@ window.AUDIO={"de": {"ändern": "data:audio/mpeg;base64,//NkxAAAAANIAAAAAExBTUVV
     $('introEmoji').textContent = G.game.emoji;
     $('introTitle').textContent = G.game.title;
     $('introText').textContent = G.game.text;
+    const rec = getRec(G.game.id);
+    $('introRecord').textContent = rec ? '🏆 Dein Rekord: ' + rec + ' ' + G.game.unit : 'Noch kein Rekord. Du kannst ihn aufstellen!';
     show('s-intro');
   }
 
@@ -1133,6 +1294,7 @@ window.AUDIO={"de": {"ändern": "data:audio/mpeg;base64,//NkxAAAAANIAAAAAExBTUVV
     G.id++;
     G.left = GAME_SECONDS;
     G.score = 0;
+    G.best = getRec(G.game.id);
     G.parts = [];
     G.last = null;
     G.game.init();
@@ -1152,27 +1314,33 @@ window.AUDIO={"de": {"ändern": "data:audio/mpeg;base64,//NkxAAAAANIAAAAAExBTUVV
     const sec = Math.max(0, Math.ceil(G.left));
     $('time').textContent = 'Noch ' + Math.floor(sec / 60) + ':' + String(sec % 60).padStart(2, '0');
     $('score').textContent = G.game.hud();
+    $('best').textContent = '🏆 Rekord: ' + Math.max(G.best, G.score);
     if (G.left <= 0){ endGame(); return; }
     requestAnimationFrame(t => loop(t, id));
   }
 
   function endGame(){
     G.run = false;
-    $('endtext').textContent = 'Super gemacht! Du hast ' + G.score + ' ' + G.game.unit + ' geschafft. Jetzt geht es wieder ans Schreiben.';
+    const isNew = G.score > G.best && G.score > 0;
+    saveRecord();
+    $('endtext').textContent = 'Super gemacht! Du hast ' + G.score + ' ' + G.game.unit + ' geschafft. ' +
+      (isNew ? '🏆 Neuer Rekord!' : (G.best ? 'Dein Rekord: ' + G.best + '.' : ''));
     $('endbox').classList.remove('hidden');
     $('jump').classList.add('hidden');
     clearTimeout(S.autoTimer);
     S.autoTimer = setTimeout(backToWriting, 12000);
   }
 
-  // Spiel jederzeit beenden und mit den Aufgaben weitermachen
+  // Zurück zum Lernen: landet in der Hauptauswahl
   function backToWriting(){
     clearTimeout(S.autoTimer);
+    if (G.run) saveRecord();             // Rekord zählt auch beim vorzeitigen Beenden
     G.run = false;
     G.id++;
     S.count = 0;
-    show('s-ex');
-    nextTask();
+    stopAll();
+    releaseMic();
+    show('s-start');
   }
 
   function canvasPos(e){
@@ -1186,7 +1354,6 @@ window.AUDIO={"de": {"ändern": "data:audio/mpeg;base64,//NkxAAAAANIAAAAAExBTUVV
       S.lang = btn.dataset.lang;
       S.count = 0;
       S.lastKey = '';
-      S.deck = [];
       $('langlabel').textContent = { de: '🇩🇪 Deutsch', en: '🇬🇧 Englisch', en2: '🌈 Englisch entdecken', dik: '📝 Diktat', ie: '🔤 ie oder i?' }[S.lang];
       show('s-ex');
       nextTask();
@@ -1206,6 +1373,13 @@ window.AUDIO={"de": {"ändern": "data:audio/mpeg;base64,//NkxAAAAANIAAAAAExBTUVV
   }
   // Nach dem Anhören steht der Cursor sofort wieder im Feld: man kann gleich losschreiben
   $('replay').addEventListener('click', () => { speakTask(); focusInput(); });
+  // Nach jedem Klick auf einen Knopf der Übungsseite landet der Cursor wieder im Feld
+  document.addEventListener('click', e => {
+    if (!$('s-ex').classList.contains('active')) return;
+    const b = e.target.closest && e.target.closest('button');
+    if (!b || b.id === 'switch') return;
+    setTimeout(focusInput, 0);
+  }, true);
   ['replay', 'hearEn', 'reveal'].forEach(id => $(id).addEventListener('mousedown', e => e.preventDefault()));
   $('check').addEventListener('click', check);
   $('next').addEventListener('click', afterFeedback);
@@ -1244,6 +1418,13 @@ window.AUDIO={"de": {"ändern": "data:audio/mpeg;base64,//NkxAAAAANIAAAAAExBTUVV
   $('mWrite').addEventListener('click', () => setMode('write'));
   $('mSpeak').addEventListener('click', () => setMode('speak'));
   updateStats();
+  $('resetStats').addEventListener('click', () => { $('resetStats').classList.add('hidden'); $('resetAsk').classList.remove('hidden'); });
+  $('resetNo').addEventListener('click', () => { $('resetAsk').classList.add('hidden'); $('resetStats').classList.remove('hidden'); });
+  $('resetYes').addEventListener('click', () => {
+    try { localStorage.removeItem('practice'); } catch (e) {}
+    $('resetAsk').classList.add('hidden'); $('resetStats').classList.remove('hidden');
+    updateStats();
+  });
 
   $('startgame').addEventListener('click', startGame);
   $('backwrite').addEventListener('click', backToWriting);
