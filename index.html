@@ -1269,9 +1269,10 @@ window.AUDIO={"de": {"ändern": "data:audio/mpeg;base64,//NkxAAAAANIAAAAAExBTUVV
     return true;
   }
 
+  // Reihum in gemischter Reihenfolge: erst kommen alle 6 Spiele dran, dann wird neu gemischt (auch über Neustarts hinweg)
   function pickGame(){
-    const options = GAMES.filter(g => g.id !== G.lastGame);
-    return options[Math.floor(Math.random() * options.length)];
+    const id = drawFrom('games', GAMES.map(g => g.id));
+    return GAMES.find(g => g.id === id);
   }
 
   function startIntro(){
